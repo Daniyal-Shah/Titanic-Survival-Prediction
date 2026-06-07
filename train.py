@@ -2,7 +2,7 @@ import pandas as pd
 import numpy as np
 from sklearn.compose import ColumnTransformer
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.model_selection import train_test_split
+from sklearn.model_selection import GridSearchCV, train_test_split
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import accuracy_score, classification_report, confusion_matrix
 from sklearn.neighbors import KNeighborsClassifier
@@ -88,3 +88,98 @@ for name, clf in classifiers.items():
 print("\nAll Classifier Results:")
 for name, acc in results.items():
     print(f"{name}: {acc:.4f}")
+
+
+# Define models and their param grids
+# Note: pipeline params use clf__ prefix to target the classifier step
+param_grids = {
+    'Logistic Regression': {
+        'model': LogisticRegression(max_iter=1000),
+        'params': {
+            'clf__C':       [0.01, 0.1, 1, 10, 100],
+            'clf__solver':  ['lbfgs', 'liblinear']
+        }
+    },
+    'KNN': {
+        'model': KNeighborsClassifier(),
+        'params': {
+            'clf__n_neighbors': [3, 5, 7, 9, 11],
+            'clf__weights':     ['uniform', 'distance'],
+            'clf__metric':      ['euclidean', 'manhattan']
+        }
+    },
+    'Decision Tree': {
+        'model': DecisionTreeClassifier(random_state=42),
+        'params': {
+            'clf__max_depth':        [3, 5, 7, 10, None],
+            'clf__min_samples_split': [2, 5, 10],
+            'clf__criterion':        ['gini', 'entropy']
+        }
+    },
+    'Random Forest': {
+        'model': RandomForestClassifier(random_state=42),
+        'params': {
+            'clf__n_estimators':      [100, 200, 300],
+            'clf__max_depth':         [3, 5, 7, None],
+            'clf__min_samples_split': [2, 5, 10]
+        }
+    },
+    'SVM': {
+        'model': SVC(random_state=42),
+        'params': {
+            'clf__C':      [0.1, 1, 10, 100],
+            'clf__kernel': ['rbf', 'linear'],
+            'clf__gamma':  ['scale', 'auto']
+        }
+    }
+}
+
+# Loop through all models
+tuned_results = {}
+
+for name, config in param_grids.items():
+
+    # Build pipeline
+    pipe = Pipeline(steps=[
+        ('preprocessor', preprocessor),
+        ('clf', config['model'])
+    ])
+
+    # GridSearchCV with 5-fold cross validation
+    grid_search = GridSearchCV(
+        pipe,
+        config['params'],
+        cv=5,
+        scoring='accuracy',
+        n_jobs=-1,        # use all CPU cores, runs faster
+        verbose=0
+    )
+
+    grid_search.fit(X_train, y_train)
+
+    # Evaluate best model on test set
+    best_model = grid_search.best_estimator_
+    y_pred = best_model.predict(X_test)
+    acc = accuracy_score(y_test, y_pred)
+
+    tuned_results[name] = {
+        'accuracy':    acc,
+        'best_params': grid_search.best_params_,
+        'model':       best_model
+    }
+
+    print(f"\n{'='*45}")
+    print(f"Model: {name}")
+    print(f"Best Params: {grid_search.best_params_}")
+    print(f"Tuned Accuracy: {acc:.4f}")
+
+# Final comparison — before vs after tuning
+print(f"\n{'='*45}")
+print(f"{'Model':<22} {'Before':>8} {'After':>8} {'Change':>8}")
+print(f"{'='*45}")
+
+
+for name, res in tuned_results.items():
+    diff = res['accuracy'] - results[name]
+    sign = '+' if diff > 0 else ''
+    print(f"{name:<22} {results[name]:>8.4f} {res['accuracy']:>8.4f} {sign}{diff:>7.4f}")
